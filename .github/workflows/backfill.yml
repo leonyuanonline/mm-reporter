@@ -1,12 +1,10 @@
 name: Three-month backfill
 
-# The push trigger starts this one-time backfill after the workflow is installed.
+# A dedicated tag starts this one-time backfill after the workflow is installed.
 on:
   push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/backfill.yml"
+    tags:
+      - "backfill-*"
   workflow_dispatch:
     inputs:
       date_from:
@@ -37,6 +35,8 @@ jobs:
       failed_count: ${{ steps.backfill.outputs.failed_count }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -51,9 +51,15 @@ jobs:
           REQUESTED_TO: ${{ inputs.date_to }}
         run: |
           DATE_TO="${REQUESTED_TO:-$(TZ=Asia/Shanghai date -d yesterday +%F)}"
-          date -d "$DATE_TO" +%F >/dev/null
           DATE_FROM="${REQUESTED_FROM:-$(date -d "$DATE_TO -3 months +1 day" +%F)}"
-          date -d "$DATE_FROM" +%F >/dev/null
+
+          for VALUE in "$DATE_FROM" "$DATE_TO"; do
+            if [[ ! "$VALUE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+              [ "$(date -d "$VALUE" +%F 2>/dev/null)" != "$VALUE" ]; then
+              echo "::error::Invalid ISO date: $VALUE"
+              exit 1
+            fi
+          done
 
           if [ "$DATE_FROM" \> "$DATE_TO" ]; then
             echo "::error::Start date $DATE_FROM is later than end date $DATE_TO."
@@ -138,6 +144,9 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Commit successful reports
+        env:
+          DATE_FROM: ${{ steps.range.outputs.date_from }}
+          DATE_TO: ${{ steps.range.outputs.date_to }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -145,7 +154,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Reports are unchanged."
           else
-            git commit -m "report: backfill ${{ steps.range.outputs.date_from }} to ${{ steps.range.outputs.date_to }}"
+            git commit -m "report: backfill $DATE_FROM to $DATE_TO"
             git push
           fi
       - name: Prepare Pages files
