@@ -1,0 +1,60 @@
+{
+  "latest": "2026-07-16",
+  "reports": [
+    {
+      "date": "2026-07-16",
+      "file": "market_making_report_2026-07-16.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-07-10",
+      "file": "market_making_report_2026-07-10.csv",
+      "records": 9
+    },
+    {
+      "date": "2026-07-07",
+      "file": "market_making_report_2026-07-07.csv",
+      "records": 17
+    },
+    {
+      "date": "2026-07-04",
+      "file": "market_making_report_2026-07-04.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-07-03",
+      "file": "market_making_report_2026-07-03.csv",
+      "records": 19
+    },
+    {
+      "date": "2026-06-30",
+      "file": "market_making_report_2026-06-30.csv",
+      "records": 27
+    },
+    {
+      "date": "2026-06-29",
+      "file": "market_making_report_2026-06-29.csv",
+      "records": 15
+    },
+    {
+      "date": "2026-06-28",
+      "file": "market_making_report_2026-06-28.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-27",
+      "file": "market_making_report_2026-06-27.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-08",
+      "file": "market_making_report_2026-06-08.csv",
+      "records": 7
+    },
+    {
+      "date": "2026-01-01",
+      "file": "market_making_report_2026-01-01.csv",
+      "records": 0
+    }
+  ]
+}

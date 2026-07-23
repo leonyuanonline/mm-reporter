@@ -1,0 +1,107 @@
+name: Daily report
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+      timezone: "Asia/Shanghai"
+  workflow_dispatch:
+    inputs:
+      report_date:
+        description: "公告发布日期（YYYY-MM-DD）；留空则处理北京时间昨天"
+        required: false
+        type: string
+
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    outputs:
+      report_date: ${{ steps.target.outputs.date }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e .
+      - name: Validate
+        run: python -m unittest discover -s tests -q
+      - name: Resolve report date
+        id: target
+        env:
+          REQUESTED_DATE: ${{ inputs.report_date }}
+        run: |
+          if [ -n "$REQUESTED_DATE" ]; then
+            date -d "$REQUESTED_DATE" +%F >/dev/null
+            TARGET_DATE="$REQUESTED_DATE"
+          else
+            TARGET_DATE="$(TZ=Asia/Shanghai date -d yesterday +%F)"
+          fi
+          echo "date=$TARGET_DATE" >> "$GITHUB_OUTPUT"
+      - name: Create runtime configuration
+        env:
+          APP_CONFIG_JSON: ${{ secrets.APP_CONFIG_JSON }}
+        run: |
+          if [ -z "$APP_CONFIG_JSON" ]; then
+            echo "::error::Repository secret APP_CONFIG_JSON is not configured."
+            exit 1
+          fi
+          printf '%s' "$APP_CONFIG_JSON" > config.json
+          python -c "import json; json.load(open('config.json', encoding='utf-8'))"
+      - name: Generate report
+        run: python -m market_maker_tool run --date "${{ steps.target.outputs.date }}"
+      - name: Update report index
+        run: python scripts/build_report_index.py
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/*.csv reports/index.json
+          if git diff --cached --quiet; then
+            echo "Report is unchanged."
+          else
+            git commit -m "report: ${{ steps.target.outputs.date }}"
+            git push
+          fi
+      - name: Prepare Pages files
+        run: |
+          mkdir -p _site/reports
+          cp -R site/. _site/
+          cp reports/*.csv reports/index.json _site/reports/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-report-${{ steps.target.outputs.date || 'failed' }}
+          path: |
+            logs/
+            data/app.db
+          if-no-files-found: ignore
+          retention-days: 14
+
+  deploy:
+    needs: collect
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

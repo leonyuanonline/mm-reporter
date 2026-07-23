@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="上交所、深交所 ETF 与上市基金做市公告历史日报查询。">
+  <title>交易所做市公告日报</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">SSE · SZSE DAILY DISCLOSURES</p>
+        <h1>交易所做市公告日报</h1>
+        <p class="subtitle">按日期查阅 ETF 与上市基金做市、流动性服务商变更记录。</p>
+      </div>
+      <a class="download-button" id="download-link" href="#" download hidden>下载当前 CSV</a>
+    </header>
+
+    <section class="report-bar" aria-label="报告日期">
+      <button class="date-step" id="previous-date" type="button" aria-label="上一份报告">←</button>
+      <label class="date-control">
+        <span>报告日期</span>
+        <select id="report-date" aria-label="选择历史报告日期"></select>
+      </label>
+      <button class="date-step" id="next-date" type="button" aria-label="下一份报告">→</button>
+      <div class="summary">
+        <strong id="visible-count">—</strong>
+        <span id="summary-label">正在载入</span>
+      </div>
+    </section>
+
+    <section class="filters" aria-label="筛选条件">
+      <label>
+        <span>交易所</span>
+        <select id="exchange-filter">
+          <option value="">全部交易所</option>
+        </select>
+      </label>
+      <label>
+        <span>动作</span>
+        <select id="action-filter">
+          <option value="">全部动作</option>
+        </select>
+      </label>
+      <label>
+        <span>服务类型</span>
+        <select id="service-filter">
+          <option value="">全部服务类型</option>
+        </select>
+      </label>
+      <label>
+        <span>做市商</span>
+        <input id="maker-filter" type="search" placeholder="输入名称关键词">
+      </label>
+      <label>
+        <span>证券代码</span>
+        <input id="code-filter" type="search" inputmode="numeric" placeholder="输入代码">
+      </label>
+      <button class="clear-button" id="clear-filters" type="button">清除筛选</button>
+    </section>
+
+    <section class="table-card" aria-live="polite">
+      <div class="state-message" id="state-message">正在读取报告…</div>
+      <div class="table-scroll" id="table-wrap" hidden>
+        <table>
+          <thead>
+            <tr>
+              <th data-key="公告发布日期">发布日期</th>
+              <th data-key="交易所">交易所</th>
+              <th data-key="做市商">做市商</th>
+              <th data-key="证券代码">证券代码</th>
+              <th data-key="生效日期">生效日期</th>
+              <th data-key="动作">动作</th>
+              <th data-key="服务类型原文">服务类型</th>
+              <th>来源</th>
+            </tr>
+          </thead>
+          <tbody id="report-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <span>数据由自动任务每日更新</span>
+      <span id="latest-date"></span>
+    </footer>
+  </main>
+  <script src="./app.js" defer></script>
+</body>
+</html>
