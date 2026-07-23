@@ -7,8 +7,53 @@
       "records": 14
     },
     {
+      "date": "2026-07-21",
+      "file": "market_making_report_2026-07-21.csv",
+      "records": 6
+    },
+    {
+      "date": "2026-07-20",
+      "file": "market_making_report_2026-07-20.csv",
+      "records": 31
+    },
+    {
+      "date": "2026-07-19",
+      "file": "market_making_report_2026-07-19.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-07-18",
+      "file": "market_making_report_2026-07-18.csv",
+      "records": 0
+    },
+    {
       "date": "2026-07-16",
       "file": "market_making_report_2026-07-16.csv",
+      "records": 7
+    },
+    {
+      "date": "2026-07-15",
+      "file": "market_making_report_2026-07-15.csv",
+      "records": 8
+    },
+    {
+      "date": "2026-07-14",
+      "file": "market_making_report_2026-07-14.csv",
+      "records": 5
+    },
+    {
+      "date": "2026-07-13",
+      "file": "market_making_report_2026-07-13.csv",
+      "records": 7
+    },
+    {
+      "date": "2026-07-12",
+      "file": "market_making_report_2026-07-12.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-07-11",
+      "file": "market_making_report_2026-07-11.csv",
       "records": 0
     },
     {
@@ -17,9 +62,24 @@
       "records": 9
     },
     {
+      "date": "2026-07-09",
+      "file": "market_making_report_2026-07-09.csv",
+      "records": 23
+    },
+    {
       "date": "2026-07-07",
       "file": "market_making_report_2026-07-07.csv",
       "records": 17
+    },
+    {
+      "date": "2026-07-06",
+      "file": "market_making_report_2026-07-06.csv",
+      "records": 14
+    },
+    {
+      "date": "2026-07-05",
+      "file": "market_making_report_2026-07-05.csv",
+      "records": 0
     },
     {
       "date": "2026-07-04",
@@ -30,6 +90,16 @@
       "date": "2026-07-03",
       "file": "market_making_report_2026-07-03.csv",
       "records": 19
+    },
+    {
+      "date": "2026-07-02",
+      "file": "market_making_report_2026-07-02.csv",
+      "records": 20
+    },
+    {
+      "date": "2026-07-01",
+      "file": "market_making_report_2026-07-01.csv",
+      "records": 16
     },
     {
       "date": "2026-06-30",
@@ -52,9 +122,294 @@
       "records": 0
     },
     {
+      "date": "2026-06-26",
+      "file": "market_making_report_2026-06-26.csv",
+      "records": 17
+    },
+    {
+      "date": "2026-06-25",
+      "file": "market_making_report_2026-06-25.csv",
+      "records": 26
+    },
+    {
+      "date": "2026-06-24",
+      "file": "market_making_report_2026-06-24.csv",
+      "records": 26
+    },
+    {
+      "date": "2026-06-23",
+      "file": "market_making_report_2026-06-23.csv",
+      "records": 27
+    },
+    {
+      "date": "2026-06-22",
+      "file": "market_making_report_2026-06-22.csv",
+      "records": 22
+    },
+    {
+      "date": "2026-06-21",
+      "file": "market_making_report_2026-06-21.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-20",
+      "file": "market_making_report_2026-06-20.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-19",
+      "file": "market_making_report_2026-06-19.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-17",
+      "file": "market_making_report_2026-06-17.csv",
+      "records": 73
+    },
+    {
+      "date": "2026-06-16",
+      "file": "market_making_report_2026-06-16.csv",
+      "records": 122
+    },
+    {
+      "date": "2026-06-15",
+      "file": "market_making_report_2026-06-15.csv",
+      "records": 119
+    },
+    {
+      "date": "2026-06-14",
+      "file": "market_making_report_2026-06-14.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-13",
+      "file": "market_making_report_2026-06-13.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-12",
+      "file": "market_making_report_2026-06-12.csv",
+      "records": 37
+    },
+    {
+      "date": "2026-06-11",
+      "file": "market_making_report_2026-06-11.csv",
+      "records": 90
+    },
+    {
       "date": "2026-06-08",
       "file": "market_making_report_2026-06-08.csv",
       "records": 7
+    },
+    {
+      "date": "2026-06-07",
+      "file": "market_making_report_2026-06-07.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-06",
+      "file": "market_making_report_2026-06-06.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-06-05",
+      "file": "market_making_report_2026-06-05.csv",
+      "records": 24
+    },
+    {
+      "date": "2026-06-04",
+      "file": "market_making_report_2026-06-04.csv",
+      "records": 16
+    },
+    {
+      "date": "2026-06-03",
+      "file": "market_making_report_2026-06-03.csv",
+      "records": 10
+    },
+    {
+      "date": "2026-06-02",
+      "file": "market_making_report_2026-06-02.csv",
+      "records": 11
+    },
+    {
+      "date": "2026-06-01",
+      "file": "market_making_report_2026-06-01.csv",
+      "records": 33
+    },
+    {
+      "date": "2026-05-31",
+      "file": "market_making_report_2026-05-31.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-30",
+      "file": "market_making_report_2026-05-30.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-29",
+      "file": "market_making_report_2026-05-29.csv",
+      "records": 19
+    },
+    {
+      "date": "2026-05-28",
+      "file": "market_making_report_2026-05-28.csv",
+      "records": 58
+    },
+    {
+      "date": "2026-05-27",
+      "file": "market_making_report_2026-05-27.csv",
+      "records": 29
+    },
+    {
+      "date": "2026-05-26",
+      "file": "market_making_report_2026-05-26.csv",
+      "records": 26
+    },
+    {
+      "date": "2026-05-25",
+      "file": "market_making_report_2026-05-25.csv",
+      "records": 33
+    },
+    {
+      "date": "2026-05-24",
+      "file": "market_making_report_2026-05-24.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-23",
+      "file": "market_making_report_2026-05-23.csv",
+      "records": 4
+    },
+    {
+      "date": "2026-05-21",
+      "file": "market_making_report_2026-05-21.csv",
+      "records": 24
+    },
+    {
+      "date": "2026-05-20",
+      "file": "market_making_report_2026-05-20.csv",
+      "records": 25
+    },
+    {
+      "date": "2026-05-19",
+      "file": "market_making_report_2026-05-19.csv",
+      "records": 17
+    },
+    {
+      "date": "2026-05-18",
+      "file": "market_making_report_2026-05-18.csv",
+      "records": 5
+    },
+    {
+      "date": "2026-05-17",
+      "file": "market_making_report_2026-05-17.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-16",
+      "file": "market_making_report_2026-05-16.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-15",
+      "file": "market_making_report_2026-05-15.csv",
+      "records": 17
+    },
+    {
+      "date": "2026-05-14",
+      "file": "market_making_report_2026-05-14.csv",
+      "records": 17
+    },
+    {
+      "date": "2026-05-13",
+      "file": "market_making_report_2026-05-13.csv",
+      "records": 26
+    },
+    {
+      "date": "2026-05-12",
+      "file": "market_making_report_2026-05-12.csv",
+      "records": 45
+    },
+    {
+      "date": "2026-05-10",
+      "file": "market_making_report_2026-05-10.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-09",
+      "file": "market_making_report_2026-05-09.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-08",
+      "file": "market_making_report_2026-05-08.csv",
+      "records": 22
+    },
+    {
+      "date": "2026-05-06",
+      "file": "market_making_report_2026-05-06.csv",
+      "records": 9
+    },
+    {
+      "date": "2026-05-05",
+      "file": "market_making_report_2026-05-05.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-04",
+      "file": "market_making_report_2026-05-04.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-03",
+      "file": "market_making_report_2026-05-03.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-02",
+      "file": "market_making_report_2026-05-02.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-05-01",
+      "file": "market_making_report_2026-05-01.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-04-30",
+      "file": "market_making_report_2026-04-30.csv",
+      "records": 16
+    },
+    {
+      "date": "2026-04-29",
+      "file": "market_making_report_2026-04-29.csv",
+      "records": 43
+    },
+    {
+      "date": "2026-04-28",
+      "file": "market_making_report_2026-04-28.csv",
+      "records": 34
+    },
+    {
+      "date": "2026-04-27",
+      "file": "market_making_report_2026-04-27.csv",
+      "records": 54
+    },
+    {
+      "date": "2026-04-26",
+      "file": "market_making_report_2026-04-26.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-04-25",
+      "file": "market_making_report_2026-04-25.csv",
+      "records": 0
+    },
+    {
+      "date": "2026-04-23",
+      "file": "market_making_report_2026-04-23.csv",
+      "records": 33
     },
     {
       "date": "2026-01-01",
