@@ -1,5 +1,6 @@
 name: Three-month backfill
 
+# The push trigger starts this one-time backfill after the workflow is installed.
 on:
   push:
     branches:
