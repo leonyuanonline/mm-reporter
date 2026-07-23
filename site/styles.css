@@ -72,9 +72,14 @@ h1 {
 .download-button {
   flex: 0 0 auto;
   padding: 11px 18px;
-  color: white;
-  background: var(--accent);
+  border-color: var(--ink);
+  color: var(--ink);
+  background: transparent;
   text-decoration: none;
+}
+
+.download-button:hover {
+  background: #ebe8de;
 }
 
 .download-button:hover,
@@ -235,13 +240,8 @@ tbody tr:last-child td { border-bottom: 0; }
 
 .exchange,
 .action {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--ink);
+  font-weight: 600;
   white-space: nowrap;
 }
 

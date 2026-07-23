@@ -521,6 +521,96 @@ def _event_evidence_ranges(
     )
 
 
+def _distinct_six_digit_codes(value: str) -> set[str]:
+    return set(re.findall(r"(?<!\d)\d{6}(?!\d)", value))
+
+
+def _relation_evidence_range(
+    source: str,
+    quote: str,
+    security_code: str,
+    market_maker: str,
+) -> tuple[int, int] | None:
+    """Ground a model-supplied relation quote without assuming field order.
+
+    A relation quote may be long and may contain PDF layout whitespace, but it
+    must identify exactly one fund code.  This prevents a model from using an
+    entire multi-fund sentence to justify a crossed maker/code pairing.
+    """
+
+    located = _find_quote_ignoring_whitespace(source, quote, "relation")
+    if (
+        located is None
+        or located.char_start is None
+        or located.char_end is None
+    ):
+        return None
+    region = source[located.char_start : located.char_end]
+    if (
+        _distinct_six_digit_codes(region) != {security_code}
+        or not _identity_occurs_in_text(region, market_maker)
+    ):
+        return None
+    return located.char_start, located.char_end
+
+
+def _order_independent_event_ranges(
+    source: str,
+    security_code: str,
+    market_maker: str,
+) -> list[tuple[int, int]]:
+    """Find unambiguous hard clauses containing one fund and its provider.
+
+    Unlike ``_event_window``, this fallback never treats an action after a fund
+    code as a new event boundary.  It is intentionally limited to hard clauses
+    containing one distinct six-digit code, so compact multi-fund rows still
+    require the more precise deterministic matcher or explicit relation
+    evidence from the model.
+    """
+
+    code_pattern = re.compile(rf"(?<!\d){re.escape(security_code)}(?!\d)")
+    ranges: set[tuple[int, int]] = set()
+    for match in code_pattern.finditer(source):
+        left = max(source.rfind(mark, 0, match.start()) for mark in ("。", "；", ";")) + 1
+        right_candidates = [
+            position
+            for mark in ("。", "；", ";")
+            if (position := source.find(mark, match.end())) >= 0
+        ]
+        right = min(right_candidates) if right_candidates else len(source)
+        region = source[left:right]
+        if (
+            _distinct_six_digit_codes(region) == {security_code}
+            and _identity_occurs_in_text(region, market_maker)
+        ):
+            ranges.add((left, right))
+    return sorted(ranges)
+
+
+def _llm_event_evidence_ranges(
+    source: str,
+    security_code: str,
+    market_maker: str,
+    relation_quote: str,
+) -> list[tuple[int, int]]:
+    """Ground one model event while keeping semantic field order irrelevant."""
+
+    if relation_quote:
+        relation_range = _relation_evidence_range(
+            source,
+            relation_quote,
+            security_code,
+            market_maker,
+        )
+        if relation_range is not None:
+            return [relation_range]
+
+    precise = _event_evidence_ranges(source, security_code, market_maker)
+    if precise:
+        return precise
+    return _order_independent_event_ranges(source, security_code, market_maker)
+
+
 def _safe_preface_ranges(
     source: str,
     ranges: Sequence[tuple[int, int]],
@@ -1187,6 +1277,9 @@ class LLMExtractor:
             "你是中国交易所ETF/上市基金做市公告抽取器。只抽取本公告当次明确宣布的事件；"
             "历史公告引用和招募说明书回顾不算事件。不得补充原文没有的信息，无事件时返回events空数组。"
             "每个‘基金×做市商×动作’输出一条，多基金或多券商必须正确配对。"
+            "字段在原文中的先后顺序不代表业务关系；无论基金代码、日期、动作、券商和服务类型按何种"
+            "顺序出现，都必须按完整语义抽取。列表中的每一家券商都要逐条输出，输出前核对原文券商"
+            "数量与事件数量，不能遗漏首项、中间项或末项。"
             "action只能是新增、终止、调整：选定/指定/提供/担任/成为归为新增，"
             "终止/停止/不再归为终止，调整/变更归为调整。action的quote必须直接证明动作；"
             "上交所‘为…提供主/一般做市服务’可证明新增，‘备案申请’不能作为动作证据。"
@@ -1197,9 +1290,12 @@ class LLMExtractor:
             "原文明示‘主流动性服务商’时输出主类。"
             "每个非空业务字段至少给一条evidence。quote只能复制标题或正文中的连续原文，"
             "禁止改写、拼接、概括或使用省略号。"
+            "每条事件还必须提供relation_evidence：复制一段连续原文，完整证明该基金代码、做市商"
+            "与动作/服务关系；多券商受同一句动作支配时可以共享同一段relation_evidence。"
             "只返回JSON对象：{\"events\":[{\"market_maker\":\"\",\"security_code\":\"\","
             "\"security_name\":\"\",\"effective_date\":\"YYYY-MM-DD或null\",\"action\":\"\","
-            "\"service_type_raw\":\"\",\"evidence\":[{\"field_name\":\"\",\"quote\":\"\"}]}]}。\n\n"
+            "\"service_type_raw\":\"\",\"relation_evidence\":\"\",\"evidence\":["
+            "{\"field_name\":\"\",\"quote\":\"\"}]}]}。\n\n"
             f"交易所：{candidate.exchange}\n公告发布日期：{candidate.published_date.isoformat()}\n"
             f"标题：{candidate.title}\n正文：\n{source[:100000]}"
         )
@@ -1283,6 +1379,7 @@ class LLMExtractor:
             action = _ACTION_CANONICAL.get(str(raw.get("action") or "").strip(), str(raw.get("action") or "").strip())
             service = _normalise_service_type(str(raw.get("service_type_raw") or ""))
             effective = _parse_date(str(raw.get("effective_date") or ""))
+            relation_quote = str(raw.get("relation_evidence") or "").strip()
             warnings: list[str] = []
 
             # Hard grounding checks: invalid/hallucinated core entities are not
@@ -1300,7 +1397,12 @@ class LLMExtractor:
             if maker_source_evidence is None:
                 self._reject_raw_event(raw_index, raw, "market_maker无法在正文中定位")
                 continue
-            event_ranges = _event_evidence_ranges(evidence_source, code, maker)
+            event_ranges = _llm_event_evidence_ranges(
+                evidence_source,
+                code,
+                maker,
+                relation_quote,
+            )
             if not event_ranges:
                 self._reject_raw_event(
                     raw_index,
@@ -1351,6 +1453,22 @@ class LLMExtractor:
                 "service_type_raw": service,
             }
             evidence: list[Evidence] = []
+            if relation_quote:
+                relation_range = _relation_evidence_range(
+                    evidence_source,
+                    relation_quote,
+                    code,
+                    maker,
+                )
+                if relation_range is not None:
+                    evidence.append(
+                        Evidence(
+                            "relation",
+                            evidence_source[relation_range[0] : relation_range[1]],
+                            char_start=relation_range[0],
+                            char_end=relation_range[1],
+                        )
+                    )
             raw_evidence = raw.get("evidence", [])
             if isinstance(raw_evidence, Mapping):
                 raw_evidence = [

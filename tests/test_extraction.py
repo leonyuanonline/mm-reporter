@@ -273,6 +273,87 @@ class RuleExtractionTests(unittest.TestCase):
 
 
 class LLMExtractionTests(unittest.TestCase):
+    def test_code_before_action_and_maker_is_grounded_without_order_assumption(self) -> None:
+        item = parsed(
+            "SZSE",
+            "关于某ETF流动性服务商的公告",
+            "为促进某交易型开放式指数证券投资基金（场内简称：某ETF，基金代码：159091）"
+            "的市场流动性和平稳运行，根据有关规定，自2026年7月22日起，"
+            "某基金管理有限公司新增招商证券股份有限公司为本基金流动性服务商。",
+        )
+        self.assertEqual(RuleExtractor().extract(item), [])
+        data = {
+            "events": [{
+                "market_maker": "招商证券股份有限公司",
+                "security_code": "159091",
+                "security_name": "某ETF",
+                "effective_date": "2026-07-22",
+                "action": "新增",
+                "service_type_raw": "一般流动性服务商",
+                "evidence": [],
+            }]
+        }
+        with TemporaryDirectory() as tmp:
+            settings = Settings.load(root_dir=tmp)
+            provider = LLMProviderConfig("model-a", "https://example.test/v1", "key", "model")
+            events = LLMExtractor(settings, provider)._events_from_json(item, data)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].market_maker, "招商证券股份有限公司")
+        self.assertEqual(events[0].security_code, "159091")
+        self.assertEqual(events[0].effective_date, date(2026, 7, 22))
+        self.assertEqual(events[0].action, "新增")
+        self.assertEqual(events[0].service_type_raw, "一般流动性服务商")
+        self.assertEqual(events[0].confidence, "HIGH")
+
+    def test_relation_evidence_supports_all_makers_after_one_fund_code(self) -> None:
+        relation = (
+            "为促进创业板新能源ETF华泰柏瑞（基金代码：159069）的市场流动性和平稳运行，"
+            "自2026年7月22日起，华泰柏瑞基金管理有限公司选定方正证券股份有限公司、"
+            "中国国际金融股份有限公司、中信证券股份有限公司、浙商证券股份有限公司"
+            "为创业板新能源ETF华泰柏瑞（159069）的流动性服务商"
+        )
+        item = parsed(
+            "SZSE",
+            "关于创业板新能源ETF华泰柏瑞流动性服务商的公告",
+            relation + "。",
+        )
+        makers = [
+            "方正证券股份有限公司",
+            "中国国际金融股份有限公司",
+            "中信证券股份有限公司",
+            "浙商证券股份有限公司",
+        ]
+        data = {
+            "events": [
+                {
+                    "market_maker": maker,
+                    "security_code": "159069",
+                    "security_name": "创业板新能源ETF华泰柏瑞",
+                    "effective_date": "2026-07-22",
+                    "action": "新增",
+                    "service_type_raw": "一般流动性服务商",
+                    "relation_evidence": relation,
+                    "evidence": [],
+                }
+                for maker in makers
+            ]
+        }
+        with TemporaryDirectory() as tmp:
+            settings = Settings.load(root_dir=tmp)
+            provider = LLMProviderConfig("model-a", "https://example.test/v1", "key", "model")
+            events = LLMExtractor(settings, provider)._events_from_json(item, data)
+
+        self.assertEqual({event.market_maker for event in events}, set(makers))
+        self.assertTrue(all(event.security_code == "159069" for event in events))
+        self.assertTrue(all(event.effective_date == date(2026, 7, 22) for event in events))
+        self.assertTrue(all(event.action == "新增" for event in events))
+        self.assertTrue(all(event.confidence == "HIGH" for event in events))
+        self.assertTrue(all(
+            any(evidence.field_name == "relation" for evidence in event.evidence)
+            for event in events
+        ))
+
     def test_bare_liquidity_provider_is_normalised_but_evidence_stays_original(self) -> None:
         item = parsed(
             "SZSE",
@@ -860,6 +941,8 @@ class LLMExtractionTests(unittest.TestCase):
                     prompt,
                 )
                 self.assertIn("裸日期、公告发布日期或落款日期不能作为生效证据", prompt)
+                self.assertIn("字段在原文中的先后顺序不代表业务关系", prompt)
+                self.assertIn("relation_evidence", prompt)
         finally:
             server.shutdown()
             server.server_close()
@@ -1044,6 +1127,20 @@ class MultiModelConsensusTests(unittest.TestCase):
         self.assertEqual(result[0].confidence, "MEDIUM")
         self.assertEqual(result[0].review_status, "NEEDS_REVIEW")
         self.assertTrue(any("字段action按严格多数" in warning for warning in result[0].warnings))
+
+    def test_two_models_form_event_majority_when_rule_is_empty(self) -> None:
+        result = reconcile_model_results(
+            [],
+            [
+                LLMExtractionResult("model-a", True, [self.model_event("model-a")]),
+                LLMExtractionResult("model-b", True, [self.model_event("model-b")]),
+            ],
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].security_code, "589130")
+        self.assertEqual(result[0].confidence, "MEDIUM")
+        self.assertEqual(result[0].review_status, "NEEDS_REVIEW")
+        self.assertEqual(result[0].extractor, "CONSENSUS[model-a,model-b]")
 
     def test_bare_and_normalised_service_values_share_one_vote(self) -> None:
         rule = replace(
