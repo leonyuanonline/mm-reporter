@@ -5,6 +5,7 @@ const state = {
   sortKey: "证券代码",
   sortDirection: "asc",
   reportBase: "./reports",
+  reportAvailable: false,
 };
 
 const elements = {
@@ -170,8 +171,10 @@ function renderTable() {
     : `条结果，共 ${total.toLocaleString("zh-CN")} 条`;
   elements.tableWrap.hidden = state.filteredRows.length === 0;
   elements.message.hidden = state.filteredRows.length > 0;
-  elements.message.textContent = total === 0
-    ? "该日期没有符合条件的公告记录。"
+  elements.message.textContent = !state.reportAvailable
+    ? "该日期暂无可用报告，请选择其他日期。"
+    : total === 0
+    ? "该日期没有公告记录。"
     : "没有符合当前筛选条件的记录。";
 
   document.querySelectorAll("th[data-key]").forEach((header) => {
@@ -179,15 +182,33 @@ function renderTable() {
   });
 }
 
+function adjacentReport(offset) {
+  const reports = state.manifest.reports;
+  const selectedDate = elements.date.value;
+  const index = reports.findIndex((report) => report.date === selectedDate);
+  if (index >= 0) return reports[index + offset];
+  if (offset > 0) return reports.find((report) => report.date < selectedDate);
+  return [...reports].reverse().find((report) => report.date > selectedDate);
+}
+
 function updateDateButtons() {
-  const index = state.manifest.reports.findIndex((report) => report.date === elements.date.value);
-  elements.previous.disabled = index >= state.manifest.reports.length - 1;
-  elements.next.disabled = index <= 0;
+  elements.previous.disabled = !adjacentReport(1);
+  elements.next.disabled = !adjacentReport(-1);
 }
 
 async function loadReport(date) {
   const report = state.manifest.reports.find((item) => item.date === date);
-  if (!report) return;
+  if (!report) {
+    state.rows = [];
+    state.reportAvailable = false;
+    elements.download.hidden = true;
+    elements.download.removeAttribute("href");
+    updateFilterOptions();
+    updateDateButtons();
+    applyFilters();
+    return;
+  }
+  state.reportAvailable = true;
   elements.message.hidden = false;
   elements.tableWrap.hidden = true;
   elements.message.textContent = "正在读取报告…";
@@ -230,8 +251,7 @@ function restoreFilters(params) {
 }
 
 function shiftDate(offset) {
-  const index = state.manifest.reports.findIndex((report) => report.date === elements.date.value);
-  const target = state.manifest.reports[index + offset];
+  const target = adjacentReport(offset);
   if (target) {
     elements.date.value = target.date;
     loadReport(target.date);
@@ -244,12 +264,9 @@ async function initialize() {
     if (!Array.isArray(state.manifest.reports) || state.manifest.reports.length === 0) {
       throw new Error("目前还没有可显示的历史报告。");
     }
-    state.manifest.reports.forEach((report) => {
-      elements.date.add(new Option(
-        `${report.date} · ${report.records} 条`,
-        report.date,
-      ));
-    });
+    const availableDates = state.manifest.reports.map((report) => report.date);
+    elements.date.min = availableDates[availableDates.length - 1];
+    elements.date.max = availableDates[0];
     elements.latestDate.textContent = `最新报告：${state.manifest.latest}`;
     const params = new URLSearchParams(location.search);
     const requestedDate = params.get("date");

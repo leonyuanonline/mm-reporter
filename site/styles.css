@@ -111,16 +111,20 @@ h1 {
   letter-spacing: .08em;
 }
 
-.date-control select {
+.date-control input {
   min-width: 140px;
   border: 0;
   outline: 0;
   color: white;
   background: transparent;
+  color-scheme: dark;
   font-weight: 700;
+  cursor: pointer;
 }
 
-.date-control option { color: var(--ink); }
+.date-control input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
 
 .date-step {
   width: 52px;

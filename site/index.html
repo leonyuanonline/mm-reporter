@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="上交所、深交所 ETF 与上市基金做市公告历史日报查询。">
   <title>交易所做市公告日报</title>
-  <link rel="stylesheet" href="./styles.css?v=2">
+  <link rel="stylesheet" href="./styles.css?v=3">
 </head>
 <body>
   <main class="shell">
@@ -22,7 +22,7 @@
       <button class="date-step" id="previous-date" type="button" aria-label="上一份报告">←</button>
       <label class="date-control">
         <span>报告日期</span>
-        <select id="report-date" aria-label="选择历史报告日期"></select>
+        <input id="report-date" type="date" aria-label="选择历史报告日期">
       </label>
       <button class="date-step" id="next-date" type="button" aria-label="下一份报告">→</button>
       <div class="summary">
@@ -87,6 +87,6 @@
       <span id="latest-date"></span>
     </footer>
   </main>
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=2" defer></script>
 </body>
 </html>
