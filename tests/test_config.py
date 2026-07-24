@@ -34,6 +34,7 @@ class ConfigTests(unittest.TestCase):
                             "api_key": "file-key-2",
                             "model": "model-2",
                             "timeout_seconds": 45,
+                            "thinking": "disabled",
                         },
                     ],
                 }
@@ -49,6 +50,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(settings.llm_providers[0].api_key, "file-key-1")
             self.assertEqual(settings.llm_providers[0].model, "model-1")
             self.assertEqual(settings.llm_providers[1].timeout_seconds, 45)
+            self.assertEqual(settings.llm_providers[1].thinking, "disabled")
             self.assertEqual(settings.llm_max_parallel_requests, 2)
             self.assertTrue(settings.llm_available)
 
@@ -131,6 +133,22 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 Settings.load(root_dir=tmp, config_path=path)
             self.assertNotIn("bad\nname", str(caught.exception))
+
+    def test_invalid_thinking_mode_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_config(tmp, {
+                "llm": {
+                    "providers": [{
+                        "name": "model",
+                        "api_base": "a",
+                        "api_key": "k",
+                        "model": "m",
+                        "thinking": "sometimes",
+                    }]
+                }
+            })
+            with self.assertRaisesRegex(ValueError, "thinking"):
+                Settings.load(root_dir=tmp, config_path=path)
 
     def test_config_root_must_be_an_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

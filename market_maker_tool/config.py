@@ -16,6 +16,7 @@ class LLMProviderConfig:
     api_key: str = field(default="", repr=False)
     model: str = ""
     timeout_seconds: int = 90
+    thinking: str | None = None
 
     @property
     def available(self) -> bool:
@@ -107,7 +108,7 @@ def _load_llm_providers(llm_cfg: dict[str, Any]) -> list[LLMProviderConfig]:
 
     raw_providers = llm_cfg.get("providers")
     if raw_providers is None:
-        legacy_fields = {"api_base", "api_key", "model", "timeout_seconds"}
+        legacy_fields = {"api_base", "api_key", "model", "timeout_seconds", "thinking"}
         if legacy_fields.intersection(llm_cfg):
             raw_providers = [{
                 "name": "default",
@@ -115,6 +116,7 @@ def _load_llm_providers(llm_cfg: dict[str, Any]) -> list[LLMProviderConfig]:
                 "api_key": llm_cfg.get("api_key", ""),
                 "model": llm_cfg.get("model", ""),
                 "timeout_seconds": llm_cfg.get("timeout_seconds", 90),
+                "thinking": llm_cfg.get("thinking"),
             }]
         else:
             raw_providers = []
@@ -139,6 +141,11 @@ def _load_llm_providers(llm_cfg: dict[str, Any]) -> list[LLMProviderConfig]:
         if name_key in names:
             raise ValueError(f"大模型接口名称重复: {name}")
         names.add(name_key)
+        thinking = raw.get("thinking")
+        if thinking is not None and thinking not in {"enabled", "disabled"}:
+            raise ValueError(
+                f"配置项 llm.providers[{index}].thinking 必须是 enabled 或 disabled"
+            )
         providers.append(
             LLMProviderConfig(
                 name=name,
@@ -149,6 +156,7 @@ def _load_llm_providers(llm_cfg: dict[str, Any]) -> list[LLMProviderConfig]:
                     raw.get("timeout_seconds", 90),
                     f"llm.providers[{index}].timeout_seconds",
                 ),
+                thinking=thinking,
             )
         )
     return providers

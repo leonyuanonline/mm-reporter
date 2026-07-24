@@ -923,6 +923,7 @@ class LLMExtractionTests(unittest.TestCase):
                     api_base=f"http://127.0.0.1:{server.server_port}/v1",
                     api_key="test-key",
                     model="test-model",
+                    thinking="disabled",
                 )
                 settings.llm_providers = [provider]
                 extractor = LLMExtractor(settings)
@@ -943,6 +944,10 @@ class LLMExtractionTests(unittest.TestCase):
                 self.assertIn("裸日期、公告发布日期或落款日期不能作为生效证据", prompt)
                 self.assertIn("字段在原文中的先后顺序不代表业务关系", prompt)
                 self.assertIn("relation_evidence", prompt)
+                self.assertEqual(
+                    request_payload["thinking"],
+                    {"type": "disabled"},
+                )
         finally:
             server.shutdown()
             server.server_close()

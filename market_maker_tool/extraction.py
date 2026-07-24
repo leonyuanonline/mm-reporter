@@ -1307,6 +1307,8 @@ class LLMExtractor:
             "temperature": 0,
             "response_format": {"type": "json_object"},
         }
+        if self.provider.thinking is not None:
+            payload["thinking"] = {"type": self.provider.thinking}
         endpoint = self.provider.api_base.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint += "/chat/completions"
