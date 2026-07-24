@@ -293,57 +293,6 @@ def _find_service_evidence(source: str, value: str) -> Evidence | None:
     return None
 
 
-def _quote_supports_field_value(field_name: str, quote: str, value: Any) -> bool:
-    """Require a model-supplied quote to semantically support its field value."""
-
-    if value in (None, "") or not quote:
-        return False
-    compact_quote = re.sub(r"\s+", "", quote)
-    compact_value = re.sub(r"\s+", "", str(value))
-    if field_name == "service_type_raw":
-        expected = _normalise_service_type(str(value))
-        return any(
-            _normalise_service_type(match.group(0)) == expected
-            for match in SERVICE_PATTERN.finditer(quote)
-        )
-    if field_name in {"market_maker", "security_name"}:
-        return compact_value in compact_quote
-    if field_name == "security_code":
-        return bool(re.search(rf"(?<!\d){re.escape(compact_value)}(?!\d)", compact_quote))
-    if field_name == "effective_date":
-        if not isinstance(value, date):
-            return False
-        return any(
-            _parse_date(match.group("date")) == value
-            for match in EFFECTIVE_DATE_PATTERN.finditer(quote)
-        )
-    if field_name == "action":
-        inferred = _action_evidence_from_text(quote)
-        if inferred:
-            return inferred[0] == str(value)
-        # A validated event may retain the shortest continuous quote (for
-        # example just ``新增``).  Event-local source grounding has already
-        # happened before reconciliation, so an unambiguous explicit action
-        # word remains valid even without repeating the service phrase.
-        compact_quote = re.sub(r"\s+", "", quote)
-        direct = {
-            canonical
-            for raw, canonical in _ACTION_CANONICAL.items()
-            if raw in compact_quote
-        }
-        return direct == {str(value)}
-    return False
-
-
-def _event_has_valid_field_evidence(event: MarketMakingEvent, field_name: str) -> bool:
-    value = getattr(event, field_name)
-    return any(
-        item.field_name == field_name
-        and _quote_supports_field_value(field_name, item.quote, value)
-        for item in event.evidence
-    )
-
-
 def _action_from_text(value: str) -> _LocatedValue | None:
     inferred = _action_evidence_from_text(value)
     if inferred is None:
@@ -500,115 +449,6 @@ def _identity_occurs_in_text(text: str, value: str) -> bool:
         return False
     pattern = re.compile(r"\s*".join(re.escape(character) for character in compact))
     return bool(pattern.search(text))
-
-
-def _event_evidence_ranges(
-    source: str,
-    security_code: str,
-    market_maker: str,
-) -> list[tuple[int, int]]:
-    """Return code-anchored event clauses that also contain the provider."""
-
-    code_pattern = re.compile(rf"(?<!\d){re.escape(security_code)}(?!\d)")
-    ranges = {
-        _event_window(source, match.start(), match.end())
-        for match in code_pattern.finditer(source)
-    }
-    return sorted(
-        (left, right)
-        for left, right in ranges
-        if _identity_occurs_in_text(source[left:right], market_maker)
-    )
-
-
-def _distinct_six_digit_codes(value: str) -> set[str]:
-    return set(re.findall(r"(?<!\d)\d{6}(?!\d)", value))
-
-
-def _relation_evidence_range(
-    source: str,
-    quote: str,
-    security_code: str,
-    market_maker: str,
-) -> tuple[int, int] | None:
-    """Ground a model-supplied relation quote without assuming field order.
-
-    A relation quote may be long and may contain PDF layout whitespace, but it
-    must identify exactly one fund code.  This prevents a model from using an
-    entire multi-fund sentence to justify a crossed maker/code pairing.
-    """
-
-    located = _find_quote_ignoring_whitespace(source, quote, "relation")
-    if (
-        located is None
-        or located.char_start is None
-        or located.char_end is None
-    ):
-        return None
-    region = source[located.char_start : located.char_end]
-    if (
-        _distinct_six_digit_codes(region) != {security_code}
-        or not _identity_occurs_in_text(region, market_maker)
-    ):
-        return None
-    return located.char_start, located.char_end
-
-
-def _order_independent_event_ranges(
-    source: str,
-    security_code: str,
-    market_maker: str,
-) -> list[tuple[int, int]]:
-    """Find unambiguous hard clauses containing one fund and its provider.
-
-    Unlike ``_event_window``, this fallback never treats an action after a fund
-    code as a new event boundary.  It is intentionally limited to hard clauses
-    containing one distinct six-digit code, so compact multi-fund rows still
-    require the more precise deterministic matcher or explicit relation
-    evidence from the model.
-    """
-
-    code_pattern = re.compile(rf"(?<!\d){re.escape(security_code)}(?!\d)")
-    ranges: set[tuple[int, int]] = set()
-    for match in code_pattern.finditer(source):
-        left = max(source.rfind(mark, 0, match.start()) for mark in ("。", "；", ";")) + 1
-        right_candidates = [
-            position
-            for mark in ("。", "；", ";")
-            if (position := source.find(mark, match.end())) >= 0
-        ]
-        right = min(right_candidates) if right_candidates else len(source)
-        region = source[left:right]
-        if (
-            _distinct_six_digit_codes(region) == {security_code}
-            and _identity_occurs_in_text(region, market_maker)
-        ):
-            ranges.add((left, right))
-    return sorted(ranges)
-
-
-def _llm_event_evidence_ranges(
-    source: str,
-    security_code: str,
-    market_maker: str,
-    relation_quote: str,
-) -> list[tuple[int, int]]:
-    """Ground one model event while keeping semantic field order irrelevant."""
-
-    if relation_quote:
-        relation_range = _relation_evidence_range(
-            source,
-            relation_quote,
-            security_code,
-            market_maker,
-        )
-        if relation_range is not None:
-            return [relation_range]
-
-    precise = _event_evidence_ranges(source, security_code, market_maker)
-    if precise:
-        return precise
-    return _order_independent_event_ranges(source, security_code, market_maker)
 
 
 def _safe_preface_ranges(
@@ -1277,21 +1117,16 @@ class LLMExtractor:
             "顺序出现，都必须按完整语义抽取。列表中的每一家券商都要逐条输出，输出前核对原文券商"
             "数量与事件数量，不能遗漏首项、中间项或末项。"
             "action只能是新增、终止、调整：选定/指定/提供/担任/成为归为新增，"
-            "终止/停止/不再归为终止，调整/变更归为调整。action的quote必须直接证明动作；"
-            "上交所‘为…提供主/一般做市服务’可证明新增，‘备案申请’不能作为动作证据。"
-            "effective_date无明确生效日期时为null；其quote必须包含完整生效语义（如‘自…日起’），"
-            "裸日期、公告发布日期或落款日期不能作为生效证据。"
+            "终止/停止/不再归为终止，调整/变更归为调整。应根据完整语义判断动作；"
+            "上交所‘为…提供主/一般做市服务’可表示新增，‘备案申请’本身不表示动作。"
+            "effective_date无明确生效日期时为null；不得把裸日期、公告发布日期或落款日期"
+            "当成生效日期。"
             "service_type_raw只能输出主做市服务、一般做市服务、主流动性服务商、一般流动性服务商。"
-            "深交所原文仅写‘流动性服务商’时输出‘一般流动性服务商’，但证据仍引用原文；"
+            "深交所原文仅写‘流动性服务商’时输出‘一般流动性服务商’；"
             "原文明示‘主流动性服务商’时输出主类。"
-            "每个非空业务字段至少给一条evidence。quote只能复制标题或正文中的连续原文，"
-            "禁止改写、拼接、概括或使用省略号。"
-            "每条事件还必须提供relation_evidence：复制一段连续原文，完整证明该基金代码、做市商"
-            "与动作/服务关系；多券商受同一句动作支配时可以共享同一段relation_evidence。"
             "只返回JSON对象：{\"events\":[{\"market_maker\":\"\",\"security_code\":\"\","
             "\"security_name\":\"\",\"effective_date\":\"YYYY-MM-DD或null\",\"action\":\"\","
-            "\"service_type_raw\":\"\",\"relation_evidence\":\"\",\"evidence\":["
-            "{\"field_name\":\"\",\"quote\":\"\"}]}]}。\n\n"
+            "\"service_type_raw\":\"\"}]}。\n\n"
             f"交易所：{candidate.exchange}\n公告发布日期：{candidate.published_date.isoformat()}\n"
             f"标题：{candidate.title}\n正文：\n{source[:100000]}"
         )
@@ -1356,10 +1191,6 @@ class LLMExtractor:
     def _events_from_json(self, parsed: ParsedAnnouncement, data: Mapping[str, Any]) -> list[MarketMakingEvent]:
         candidate = parsed.candidate
         source = _normalise_source(parsed.text)
-        # Core event grounding uses the parsed body only.  Combining the title
-        # and body would let a generic title action masquerade as local evidence
-        # for one row in a conflicting multi-event body.
-        evidence_source = source
         raw_events = data.get("events", [])
         if not isinstance(raw_events, list):
             raise ValueError("LLM JSON中的events不是数组")
@@ -1376,97 +1207,40 @@ class LLMExtractor:
             name = str(raw.get("security_name") or "").strip()
             action = _ACTION_CANONICAL.get(str(raw.get("action") or "").strip(), str(raw.get("action") or "").strip())
             service = _normalise_service_type(str(raw.get("service_type_raw") or ""))
-            effective = _parse_date(str(raw.get("effective_date") or ""))
+            effective_text = str(raw.get("effective_date") or "").strip()
+            effective = _parse_date(effective_text)
             relation_quote = str(raw.get("relation_evidence") or "").strip()
-            warnings: list[str] = []
 
-            # Hard grounding checks: invalid/hallucinated core entities are not
-            # allowed into reconciliation.
+            # Only objective format and source-presence checks run before
+            # consensus. Semantic relationships are decided by independent
+            # extractor agreement rather than local clause heuristics.
             if not re.fullmatch(r"\d{6}", code):
                 self._reject_raw_event(raw_index, raw, "security_code不是六位数字")
                 continue
-            if code not in evidence_source:
+            if code not in source:
                 self._reject_raw_event(raw_index, raw, "security_code无法在正文中定位")
                 continue
-            maker_source_evidence = _find_quote_ignoring_whitespace(evidence_source, maker, "market_maker")
             if not maker:
                 self._reject_raw_event(raw_index, raw, "market_maker为空")
                 continue
-            if maker_source_evidence is None:
+            if _find_quote_ignoring_whitespace(source, maker, "market_maker") is None:
                 self._reject_raw_event(raw_index, raw, "market_maker无法在正文中定位")
-                continue
-            event_ranges = _llm_event_evidence_ranges(
-                evidence_source,
-                code,
-                maker,
-                relation_quote,
-            )
-            if not event_ranges:
-                self._reject_raw_event(
-                    raw_index,
-                    raw,
-                    "market_maker与security_code无法在同一事件子句中定位",
-                )
                 continue
             if action not in {"新增", "终止", "调整"}:
                 self._reject_raw_event(raw_index, raw, "action不是新增、终止或调整")
                 continue
-            action_source_evidence = _find_action_evidence(
-                evidence_source,
-                action,
-                event_ranges,
-            )
-            if action_source_evidence is None:
-                self._reject_raw_event(
-                    raw_index,
-                    raw,
-                    f"action={action}缺少同一事件子句中的受支持原文动作",
-                )
-                continue
             if service not in _SERVICE_CLASS:
                 self._reject_raw_event(raw_index, raw, "service_type_raw不是受支持的服务分类")
                 continue
-            service_source_evidence = _find_event_service_evidence(
-                evidence_source,
-                service,
-                event_ranges,
-            )
-            if service_source_evidence is None:
-                self._reject_raw_event(
-                    raw_index,
-                    raw,
-                    "service_type_raw无法在同一事件子句或公共列表前言中定位",
-                )
+            if effective_text and effective is None:
+                self._reject_raw_event(raw_index, raw, "effective_date格式非法")
                 continue
-            if name and _find_quote_ignoring_whitespace(evidence_source, name, "security_name") is None:
-                warnings.append("LLM证券简称/名称不在原文中，已置空")
-                name = ""
 
-            field_values = {
-                "market_maker": maker,
-                "security_code": code,
-                "security_name": name,
-                "effective_date": effective,
-                "action": action,
-                "service_type_raw": service,
-            }
-            evidence: list[Evidence] = []
-            if relation_quote:
-                relation_range = _relation_evidence_range(
-                    evidence_source,
-                    relation_quote,
-                    code,
-                    maker,
-                )
-                if relation_range is not None:
-                    evidence.append(
-                        Evidence(
-                            "relation",
-                            evidence_source[relation_range[0] : relation_range[1]],
-                            char_start=relation_range[0],
-                            char_end=relation_range[1],
-                        )
-                    )
+            # Quotes are retained for audit only. They never control event
+            # admission or whether a field receives a consensus vote.
+            evidence: list[Evidence] = (
+                [Evidence("relation", relation_quote)] if relation_quote else []
+            )
             raw_evidence = raw.get("evidence", [])
             if isinstance(raw_evidence, Mapping):
                 raw_evidence = [
@@ -1479,72 +1253,9 @@ class LLMExtractor:
                         continue
                     field_name = str(item.get("field_name") or "").strip()
                     quote = str(item.get("quote") or "").strip()
-                    if field_name not in field_values or not quote:
-                        continue
-                    if field_name == "service_type_raw":
-                        located = service_source_evidence
-                    elif field_name in {"action", "effective_date"}:
-                        located = _find_quote_in_ranges(
-                            evidence_source,
-                            quote,
-                            field_name,
-                            event_ranges,
-                        )
-                    else:
-                        located = _find_quote(evidence_source, quote, field_name)
-                    if located is None and field_name in {"action", "effective_date"}:
-                        located = _find_quote_in_ranges(
-                            evidence_source,
-                            quote,
-                            field_name,
-                            event_ranges,
-                            ignore_whitespace=True,
-                        )
-                    elif located is None and field_name != "service_type_raw":
-                        # PDF text layers frequently insert spaces/newlines inside
-                        # an otherwise exact model quote.  Treat layout whitespace
-                        # as non-semantic before declaring the evidence invalid.
-                        located = _find_quote_ignoring_whitespace(
-                            evidence_source,
-                            quote,
-                            field_name,
-                        )
-                    if located and _quote_supports_field_value(
-                        field_name, quote, field_values[field_name]
-                    ):
-                        evidence.append(located)
+                    if quote:
+                        evidence.append(Evidence(field_name, quote))
 
-            for field_name, value in field_values.items():
-                if field_name == "effective_date":
-                    continue
-                if value and not _event_evidence_placeholder(evidence, field_name):
-                    if field_name == "service_type_raw":
-                        fallback = service_source_evidence
-                    elif field_name == "action":
-                        fallback = action_source_evidence
-                    else:
-                        fallback = _find_quote(evidence_source, value, field_name)
-                    if fallback is None and field_name in {"market_maker", "security_name"}:
-                        fallback = _find_quote_ignoring_whitespace(evidence_source, value, field_name)
-                    if fallback:
-                        evidence.append(fallback)
-                    else:
-                        warnings.append(f"LLM字段缺少可验证的事件原文证据：{field_name}")
-            if effective and not _event_evidence_placeholder(evidence, "effective_date"):
-                date_evidence = _find_effective_date_evidence(
-                    evidence_source,
-                    effective,
-                    event_ranges,
-                )
-                if date_evidence:
-                    evidence.append(date_evidence)
-                else:
-                    warnings.append("LLM生效日期缺少可验证的事件原文证据，已置空")
-                    effective = None
-            if effective is None:
-                warnings.append("LLM未抽取到明确生效日期")
-
-            confidence = "MEDIUM" if warnings else "HIGH"
             events.append(
                 MarketMakingEvent(
                     published_date=candidate.published_date,
@@ -1560,10 +1271,9 @@ class LLMExtractor:
                     publisher=candidate.publisher,
                     announcement_external_id=candidate.external_id,
                     extractor=f"LLM:{self.provider.name}",
-                    confidence=confidence,
-                    review_status="AUTO_ACCEPTED" if confidence == "HIGH" else "NEEDS_REVIEW",
+                    confidence="HIGH",
+                    review_status="AUTO_ACCEPTED",
                     evidence=evidence,
-                    warnings=warnings,
                 )
             )
         return _deduplicate(events)
@@ -1581,11 +1291,6 @@ class LLMExtractor:
                 "reasons": [reason],
             }
         )
-
-
-def _event_evidence_placeholder(evidence: Sequence[Evidence], field_name: str) -> bool:
-    return any(item.field_name == field_name and item.quote for item in evidence)
-
 
 def _load_json_object(content: str) -> Mapping[str, Any]:
     value = content.strip()
@@ -1885,20 +1590,13 @@ def reconcile_model_results(
             for source in observed_sources:
                 observation = observations[source]
                 value = getattr(observation, field_name)
-                # Model fields without a semantically validated source quote
-                # are abstentions.  Rule fields are produced from deterministic
-                # source spans and retain their existing rule confidence.
-                evidence_valid = source == "RULE" or _event_has_valid_field_evidence(
-                    observation, field_name
-                )
                 key = _field_vote_key(field_name, value)
-                voted = evidence_valid and key is not None
+                voted = key is not None
                 vote_observations.append(
                     {
                         "source": source,
                         "value": value,
                         "vote_key": key,
-                        "evidence_valid": evidence_valid,
                         "voted": voted,
                     }
                 )
@@ -1915,7 +1613,7 @@ def reconcile_model_results(
                 "observations": vote_observations,
                 "selected_value": chosen[field_name],
                 "selected_source": base_source,
-                "decision": "no_valid_vote",
+                "decision": "no_vote",
                 "strict_majority": False,
             }
 
@@ -1967,12 +1665,12 @@ def reconcile_model_results(
                 missing_field_count = support_count - len(votes)
                 if missing_field_count and field_name in _CORE_FIELDS:
                     # A single populated core-field vote cannot be treated as
-                    # reliable merely because all other sources abstained.
+                    # reliable merely because all other sources omitted it.
                     rank = 0 if len(votes) == 1 and support_count > 1 else min(rank, 1)
                     voting_sources = {source for source, _, _ in votes}
                     missing = [source for source in observed_sources if source not in voting_sources]
                     warnings.append(
-                        f"部分抽取器缺少字段或有效证据{field_name}：" + "、".join(missing)
+                        f"部分抽取器缺少字段{field_name}：" + "、".join(missing)
                     )
             else:
                 fallback_value = getattr(base, field_name)

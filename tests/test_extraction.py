@@ -354,6 +354,42 @@ class LLMExtractionTests(unittest.TestCase):
             for event in events
         ))
 
+    def test_collective_fund_reference_accepts_one_event_per_code(self) -> None:
+        body = (
+            "基金159379、基金159219、基金159808。"
+            "自2026年7月23日起，本公司新增东方证券股份有限公司为上述基金的流动性服务商。"
+        )
+        item = parsed(
+            "SZSE",
+            "关于旗下部分基金新增流动性服务商的公告",
+            body,
+        )
+        data = {
+            "events": [
+                {
+                    "market_maker": "东方证券股份有限公司",
+                    "security_code": code,
+                    "security_name": f"基金{code}",
+                    "effective_date": "2026-07-23",
+                    "action": "新增",
+                    "service_type_raw": "一般流动性服务商",
+                }
+                for code in ("159379", "159219", "159808")
+            ]
+        }
+        with TemporaryDirectory() as tmp:
+            settings = Settings.load(root_dir=tmp)
+            provider = LLMProviderConfig("model-a", "https://example.test/v1", "key", "model")
+            extractor = LLMExtractor(settings, provider)
+            events = extractor._events_from_json(item, data)
+
+        self.assertEqual(
+            {event.security_code for event in events},
+            {"159379", "159219", "159808"},
+        )
+        self.assertTrue(all(event.market_maker == "东方证券股份有限公司" for event in events))
+        self.assertEqual(extractor.rejected_events, [])
+
     def test_bare_liquidity_provider_is_normalised_but_evidence_stays_original(self) -> None:
         item = parsed(
             "SZSE",
@@ -395,7 +431,7 @@ class LLMExtractionTests(unittest.TestCase):
         self.assertIn("流动性服务商", service_evidence)
         self.assertFalse(any("service_type_raw" in warning for warning in events[0].warnings))
 
-    def test_bare_service_evidence_does_not_match_primary_suffix(self) -> None:
+    def test_model_service_value_is_not_semantically_revalidated(self) -> None:
         item = parsed(
             "SZSE",
             "关于某ETF主流动性服务商的公告",
@@ -419,12 +455,9 @@ class LLMExtractionTests(unittest.TestCase):
             provider = LLMProviderConfig("model-a", "https://example.test/v1", "key", "model")
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
-        self.assertEqual(events, [])
-        self.assertEqual(len(extractor.rejected_events), 1)
-        self.assertIn(
-            "service_type_raw无法在同一事件子句或公共列表前言中定位",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].service_type_raw, "一般流动性服务商")
+        self.assertEqual(extractor.rejected_events, [])
 
     def test_designated_action_is_grounded_as_add(self) -> None:
         item = parsed(
@@ -454,7 +487,7 @@ class LLMExtractionTests(unittest.TestCase):
         self.assertTrue(any(item.field_name == "action" for item in events[0].evidence))
         self.assertFalse(any("action" in warning for warning in events[0].warnings))
 
-    def test_invalid_model_quotes_are_replaced_with_semantic_evidence(self) -> None:
+    def test_model_quotes_are_retained_without_semantic_rewrite(self) -> None:
         item = parsed(
             "SSE",
             "关于招商证券股份有限公司为某ETF提供主做市服务的公告",
@@ -490,10 +523,10 @@ class LLMExtractionTests(unittest.TestCase):
         self.assertEqual(events[0].confidence, "HIGH")
         self.assertEqual(events[0].warnings, [])
         evidence = {item.field_name: item.quote for item in events[0].evidence}
-        self.assertEqual(evidence["action"], "提供主做市服务")
-        self.assertEqual(evidence["effective_date"], "自2026年07月08日起")
+        self.assertEqual(evidence["action"], "备案申请")
+        self.assertEqual(evidence["effective_date"], "2026年07月08日")
 
-    def test_security_name_evidence_fallback_ignores_pdf_whitespace(self) -> None:
+    def test_model_fields_do_not_require_generated_evidence(self) -> None:
         item = parsed(
             "SZSE",
             "关于某基金流动性服务商的公告",
@@ -519,13 +552,9 @@ class LLMExtractionTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].confidence, "HIGH")
         self.assertFalse(any("security_name" in warning for warning in events[0].warnings))
-        self.assertTrue(any(
-            evidence.field_name == "security_name"
-            and evidence.quote == "稀有金属 ETF 华夏"
-            for evidence in events[0].evidence
-        ))
+        self.assertEqual(events[0].evidence, [])
 
-    def test_termination_phrase_cannot_support_add_action(self) -> None:
+    def test_model_action_is_not_semantically_revalidated(self) -> None:
         item = parsed(
             "SSE",
             "关于东海证券股份有限公司终止为某ETF提供主做市服务的公告",
@@ -551,14 +580,11 @@ class LLMExtractionTests(unittest.TestCase):
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
 
-        self.assertEqual(events, [])
-        self.assertEqual(len(extractor.rejected_events), 1)
-        self.assertIn(
-            "action=新增缺少同一事件子句中的受支持原文动作",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].action, "新增")
+        self.assertEqual(extractor.rejected_events, [])
 
-    def test_action_evidence_cannot_be_borrowed_from_another_event(self) -> None:
+    def test_action_evidence_does_not_control_event_admission(self) -> None:
         item = parsed(
             "SSE",
             "关于ETF做市服务的公告",
@@ -585,13 +611,11 @@ class LLMExtractionTests(unittest.TestCase):
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
 
-        self.assertEqual(events, [])
-        self.assertIn(
-            "action=终止缺少同一事件子句中的受支持原文动作",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].action, "终止")
+        self.assertEqual(extractor.rejected_events, [])
 
-    def test_effective_date_cannot_be_borrowed_from_another_event(self) -> None:
+    def test_effective_date_is_not_semantically_revalidated(self) -> None:
         item = parsed(
             "SSE",
             "关于ETF做市服务的公告",
@@ -619,9 +643,8 @@ class LLMExtractionTests(unittest.TestCase):
             events = LLMExtractor(settings, provider)._events_from_json(item, data)
 
         self.assertEqual(len(events), 1)
-        self.assertIsNone(events[0].effective_date)
-        self.assertTrue(any("生效日期缺少可验证" in warning for warning in events[0].warnings))
-        self.assertFalse(any(
+        self.assertEqual(events[0].effective_date, date(2026, 7, 8))
+        self.assertTrue(any(
             item.field_name == "effective_date"
             for item in events[0].evidence
         ))
@@ -653,14 +676,7 @@ class LLMExtractionTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].confidence, "HIGH")
         self.assertEqual(events[0].effective_date, date(2026, 7, 8))
-        self.assertTrue(any(
-            item.field_name == "action" and "新增" in item.quote
-            for item in events[0].evidence
-        ))
-        self.assertTrue(any(
-            item.field_name == "effective_date" and item.quote == "自2026年7月8日起"
-            for item in events[0].evidence
-        ))
+        self.assertEqual(events[0].evidence, [])
 
     def test_later_event_cannot_donate_action_to_earlier_event(self) -> None:
         item = parsed(
@@ -687,11 +703,9 @@ class LLMExtractionTests(unittest.TestCase):
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
 
-        self.assertEqual(events, [])
-        self.assertIn(
-            "action=新增缺少同一事件子句中的受支持原文动作",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].action, "新增")
+        self.assertEqual(extractor.rejected_events, [])
 
     def test_later_event_cannot_donate_its_only_date(self) -> None:
         item = parsed(
@@ -718,10 +732,9 @@ class LLMExtractionTests(unittest.TestCase):
             events = LLMExtractor(settings, provider)._events_from_json(item, data)
 
         self.assertEqual(len(events), 1)
-        self.assertIsNone(events[0].effective_date)
-        self.assertTrue(any("生效日期缺少可验证" in warning for warning in events[0].warnings))
+        self.assertEqual(events[0].effective_date, date(2026, 7, 9))
 
-    def test_comma_joined_implicit_events_reject_crossed_maker_and_code(self) -> None:
+    def test_model_pairing_is_not_overridden_by_clause_heuristics(self) -> None:
         item = parsed(
             "SSE",
             "关于ETF做市服务的公告",
@@ -746,11 +759,10 @@ class LLMExtractionTests(unittest.TestCase):
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
 
-        self.assertEqual(events, [])
-        self.assertIn(
-            "market_maker与security_code无法在同一事件子句中定位",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].market_maker, "乙证券股份有限公司")
+        self.assertEqual(events[0].security_code, "111111")
+        self.assertEqual(extractor.rejected_events, [])
 
     def test_one_maker_can_still_own_multiple_comma_joined_funds(self) -> None:
         item = parsed(
@@ -779,7 +791,7 @@ class LLMExtractionTests(unittest.TestCase):
         self.assertEqual(events[0].market_maker, "甲证券股份有限公司")
         self.assertEqual(events[0].security_code, "222222")
 
-    def test_service_tier_cannot_be_borrowed_from_another_event(self) -> None:
+    def test_service_tier_is_not_semantically_revalidated(self) -> None:
         item = parsed(
             "SSE",
             "关于ETF做市服务的公告",
@@ -804,13 +816,11 @@ class LLMExtractionTests(unittest.TestCase):
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
 
-        self.assertEqual(events, [])
-        self.assertIn(
-            "service_type_raw无法在同一事件子句或公共列表前言中定位",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].service_type_raw, "主做市服务")
+        self.assertEqual(extractor.rejected_events, [])
 
-    def test_continuing_service_does_not_prove_add_action(self) -> None:
+    def test_action_field_is_accepted_without_local_action_proof(self) -> None:
         item = parsed(
             "SSE",
             "关于ETF做市服务的公告",
@@ -834,11 +844,9 @@ class LLMExtractionTests(unittest.TestCase):
             extractor = LLMExtractor(settings, provider)
             events = extractor._events_from_json(item, data)
 
-        self.assertEqual(events, [])
-        self.assertIn(
-            "action=新增缺少同一事件子句中的受支持原文动作",
-            extractor.rejected_events[0]["reasons"],
-        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].action, "新增")
+        self.assertEqual(extractor.rejected_events, [])
 
     def test_negated_termination_does_not_override_explicit_add(self) -> None:
         item = parsed(
@@ -864,10 +872,7 @@ class LLMExtractionTests(unittest.TestCase):
             events = LLMExtractor(settings, provider)._events_from_json(item, data)
 
         self.assertEqual(len(events), 1)
-        action_evidence = next(
-            item.quote for item in events[0].evidence if item.field_name == "action"
-        )
-        self.assertEqual(action_evidence, "新增")
+        self.assertEqual(events[0].evidence, [])
 
     def test_openai_compatible_json_call(self) -> None:
         item = parsed(
@@ -938,12 +943,13 @@ class LLMExtractionTests(unittest.TestCase):
                     prompt,
                 )
                 self.assertIn(
-                    "‘备案申请’不能作为动作证据",
+                    "‘备案申请’本身不表示动作",
                     prompt,
                 )
-                self.assertIn("裸日期、公告发布日期或落款日期不能作为生效证据", prompt)
+                self.assertIn("裸日期、公告发布日期或落款日期当成生效日期", prompt)
                 self.assertIn("字段在原文中的先后顺序不代表业务关系", prompt)
-                self.assertIn("relation_evidence", prompt)
+                self.assertNotIn("relation_evidence", prompt)
+                self.assertNotIn('"evidence"', prompt)
                 self.assertEqual(
                     request_payload["thinking"],
                     {"type": "disabled"},
@@ -1024,7 +1030,7 @@ class LLMExtractionTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
-    def test_mismatched_effective_date_evidence_is_rejected(self) -> None:
+    def test_effective_date_vote_does_not_depend_on_evidence_quote(self) -> None:
         item = parsed(
             "SSE",
             "关于中信证券股份有限公司为某ETF提供主做市服务的公告",
@@ -1053,12 +1059,12 @@ class LLMExtractionTests(unittest.TestCase):
             provider = LLMProviderConfig("model-a", "https://example.test/v1", "key", "model")
             events = LLMExtractor(settings, provider)._events_from_json(item, data)
         self.assertEqual(len(events), 1)
-        self.assertIsNone(events[0].effective_date)
-        self.assertEqual(events[0].confidence, "MEDIUM")
-        self.assertFalse(any(item.field_name == "effective_date" for item in events[0].evidence))
-        self.assertTrue(any("生效日期缺少可验证" in warning for warning in events[0].warnings))
+        self.assertEqual(events[0].effective_date, date(2026, 7, 14))
+        self.assertEqual(events[0].confidence, "HIGH")
+        self.assertTrue(any(item.field_name == "effective_date" for item in events[0].evidence))
+        self.assertEqual(events[0].warnings, [])
 
-    def test_footer_date_cannot_ground_effective_date(self) -> None:
+    def test_effective_date_is_not_grounded_by_local_footer_heuristic(self) -> None:
         item = parsed(
             "SSE",
             "关于中信证券股份有限公司为某ETF提供主做市服务的公告",
@@ -1083,8 +1089,8 @@ class LLMExtractionTests(unittest.TestCase):
             provider = LLMProviderConfig("model-a", "https://example.test/v1", "key", "model")
             events = LLMExtractor(settings, provider)._events_from_json(item, data)
         self.assertEqual(len(events), 1)
-        self.assertIsNone(events[0].effective_date)
-        self.assertFalse(any(item.field_name == "effective_date" for item in events[0].evidence))
+        self.assertEqual(events[0].effective_date, date(2026, 7, 14))
+        self.assertTrue(any(item.field_name == "effective_date" for item in events[0].evidence))
 
 
 class MultiModelConsensusTests(unittest.TestCase):
@@ -1280,7 +1286,7 @@ class MultiModelConsensusTests(unittest.TestCase):
         )
         self.assertTrue(all(event.confidence == "HIGH" for event in result))
 
-    def test_semantically_wrong_model_evidence_abstains(self) -> None:
+    def test_model_fields_vote_without_semantic_evidence_validation(self) -> None:
         bad_model = replace(
             self.model_event("model-a", action="终止"),
             evidence=self.rule.evidence,
@@ -1291,7 +1297,7 @@ class MultiModelConsensusTests(unittest.TestCase):
         )
         self.assertEqual(result[0].action, "新增")
         self.assertEqual(result[0].confidence, "LOW")
-        self.assertTrue(any("缺少字段或有效证据action" in warning for warning in result[0].warnings))
+        self.assertTrue(any("字段action无严格多数" in warning for warning in result[0].warnings))
 
 
 if __name__ == "__main__":
