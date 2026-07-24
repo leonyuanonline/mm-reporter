@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="上交所、深交所 ETF 与上市基金做市公告历史日报查询。">
   <title>交易所做市公告日报</title>
-  <link rel="stylesheet" href="./styles.css?v=3">
+  <link rel="stylesheet" href="./styles.css?v=4">
 </head>
 <body>
   <main class="shell">
@@ -20,10 +20,49 @@
 
     <section class="report-bar" aria-label="报告日期">
       <button class="date-step" id="previous-date" type="button" aria-label="上一份报告">←</button>
-      <label class="date-control">
+      <div class="date-control">
         <span>报告日期</span>
-        <input id="report-date" type="date" aria-label="选择历史报告日期">
-      </label>
+        <input id="report-date" type="hidden">
+        <button
+          class="calendar-toggle"
+          id="calendar-toggle"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="calendar-popover"
+        >
+          <span id="selected-date">选择日期</span>
+          <span aria-hidden="true">▾</span>
+        </button>
+        <div
+          class="calendar-popover"
+          id="calendar-popover"
+          role="dialog"
+          aria-label="选择报告日期"
+          hidden
+        >
+          <div class="calendar-header">
+            <button id="previous-month" type="button" aria-label="上个月">‹</button>
+            <strong id="calendar-month"></strong>
+            <button id="next-month" type="button" aria-label="下个月">›</button>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>一</span>
+            <span>二</span>
+            <span>三</span>
+            <span>四</span>
+            <span>五</span>
+            <span>六</span>
+            <span>日</span>
+          </div>
+          <div class="calendar-grid" id="calendar-grid" role="grid"></div>
+          <div class="calendar-legend">
+            <span><i class="legend-count"></i>公告条数</span>
+            <span><i class="legend-empty"></i>无公告</span>
+            <span><i class="legend-missing"></i>报告缺失</span>
+          </div>
+        </div>
+      </div>
       <button class="date-step" id="next-date" type="button" aria-label="下一份报告">→</button>
       <div class="summary">
         <strong id="visible-count">—</strong>
@@ -87,6 +126,6 @@
       <span id="latest-date"></span>
     </footer>
   </main>
-  <script src="./app.js?v=2" defer></script>
+  <script src="./app.js?v=3" defer></script>
 </body>
 </html>

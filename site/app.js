@@ -6,10 +6,18 @@ const state = {
   sortDirection: "asc",
   reportBase: "./reports",
   reportAvailable: false,
+  calendarView: "",
 };
 
 const elements = {
   date: document.querySelector("#report-date"),
+  dateDisplay: document.querySelector("#selected-date"),
+  calendarToggle: document.querySelector("#calendar-toggle"),
+  calendarPopover: document.querySelector("#calendar-popover"),
+  calendarMonth: document.querySelector("#calendar-month"),
+  calendarGrid: document.querySelector("#calendar-grid"),
+  previousMonth: document.querySelector("#previous-month"),
+  nextMonth: document.querySelector("#next-month"),
   previous: document.querySelector("#previous-date"),
   next: document.querySelector("#next-date"),
   exchange: document.querySelector("#exchange-filter"),
@@ -196,6 +204,79 @@ function updateDateButtons() {
   elements.next.disabled = !adjacentReport(-1);
 }
 
+function monthKey(year, monthIndex) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+}
+
+function shiftMonthKey(value, offset) {
+  const [year, month] = value.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return monthKey(shifted.getUTCFullYear(), shifted.getUTCMonth());
+}
+
+function closeCalendar() {
+  elements.calendarPopover.hidden = true;
+  elements.calendarToggle.setAttribute("aria-expanded", "false");
+}
+
+function renderCalendar() {
+  if (!state.calendarView || !state.manifest) return;
+  const [year, month] = state.calendarView.split("-").map(Number);
+  const reports = new Map(state.manifest.reports.map((report) => [report.date, report]));
+  const firstWeekday = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
+  const dayCount = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const earliestMonth = state.manifest.reports[state.manifest.reports.length - 1].date.slice(0, 7);
+  const latestMonth = state.manifest.reports[0].date.slice(0, 7);
+
+  elements.calendarMonth.textContent = `${year} 年 ${month} 月`;
+  elements.previousMonth.disabled = state.calendarView <= earliestMonth;
+  elements.nextMonth.disabled = state.calendarView >= latestMonth;
+  elements.calendarGrid.replaceChildren();
+
+  for (let index = 0; index < firstWeekday; index += 1) {
+    const spacer = document.createElement("span");
+    spacer.className = "calendar-spacer";
+    elements.calendarGrid.append(spacer);
+  }
+
+  for (let day = 1; day <= dayCount; day += 1) {
+    const date = `${state.calendarView}-${String(day).padStart(2, "0")}`;
+    const report = reports.get(date);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "calendar-day";
+    button.setAttribute("role", "gridcell");
+    button.dataset.date = date;
+    if (date === elements.date.value) {
+      button.classList.add("selected");
+      button.setAttribute("aria-current", "date");
+    }
+
+    const dayNumber = document.createElement("span");
+    dayNumber.className = "calendar-day-number";
+    dayNumber.textContent = day;
+    const count = document.createElement("span");
+    count.className = "calendar-day-count";
+
+    if (!report) {
+      button.classList.add("missing");
+      button.disabled = true;
+      button.setAttribute("aria-label", `${date}，报告缺失`);
+      count.textContent = "—";
+    } else if (report.records === 0) {
+      button.classList.add("empty");
+      button.setAttribute("aria-label", `${date}，无公告`);
+      count.textContent = "0";
+    } else {
+      button.classList.add("has-records");
+      button.setAttribute("aria-label", `${date}，${report.records} 条公告`);
+      count.textContent = report.records > 99 ? "99+" : report.records;
+    }
+    button.append(dayNumber, count);
+    elements.calendarGrid.append(button);
+  }
+}
+
 async function loadReport(date) {
   const report = state.manifest.reports.find((item) => item.date === date);
   if (!report) {
@@ -253,9 +334,17 @@ function restoreFilters(params) {
 function shiftDate(offset) {
   const target = adjacentReport(offset);
   if (target) {
-    elements.date.value = target.date;
-    loadReport(target.date);
+    selectReportDate(target.date);
   }
+}
+
+function selectReportDate(date, close = true) {
+  elements.date.value = date;
+  elements.dateDisplay.textContent = date;
+  state.calendarView = date.slice(0, 7);
+  renderCalendar();
+  if (close) closeCalendar();
+  loadReport(date);
 }
 
 async function initialize() {
@@ -264,9 +353,6 @@ async function initialize() {
     if (!Array.isArray(state.manifest.reports) || state.manifest.reports.length === 0) {
       throw new Error("目前还没有可显示的历史报告。");
     }
-    const availableDates = state.manifest.reports.map((report) => report.date);
-    elements.date.min = availableDates[availableDates.length - 1];
-    elements.date.max = availableDates[0];
     elements.latestDate.textContent = `最新报告：${state.manifest.latest}`;
     const params = new URLSearchParams(location.search);
     const requestedDate = params.get("date");
@@ -274,6 +360,9 @@ async function initialize() {
       ? requestedDate
       : state.manifest.latest;
     elements.date.value = initialDate;
+    elements.dateDisplay.textContent = initialDate;
+    state.calendarView = initialDate.slice(0, 7);
+    renderCalendar();
     await loadReport(initialDate);
     restoreFilters(params);
     applyFilters();
@@ -284,7 +373,38 @@ async function initialize() {
   }
 }
 
-elements.date.addEventListener("change", () => loadReport(elements.date.value));
+elements.calendarToggle.addEventListener("click", () => {
+  const willOpen = elements.calendarPopover.hidden;
+  if (willOpen) {
+    state.calendarView = elements.date.value.slice(0, 7);
+    renderCalendar();
+    elements.calendarPopover.hidden = false;
+    elements.calendarToggle.setAttribute("aria-expanded", "true");
+  } else {
+    closeCalendar();
+  }
+});
+elements.calendarGrid.addEventListener("click", (event) => {
+  const day = event.target.closest(".calendar-day:not(:disabled)");
+  if (day) selectReportDate(day.dataset.date);
+});
+elements.previousMonth.addEventListener("click", () => {
+  state.calendarView = shiftMonthKey(state.calendarView, -1);
+  renderCalendar();
+});
+elements.nextMonth.addEventListener("click", () => {
+  state.calendarView = shiftMonthKey(state.calendarView, 1);
+  renderCalendar();
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".date-control")) closeCalendar();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements.calendarPopover.hidden) {
+    closeCalendar();
+    elements.calendarToggle.focus();
+  }
+});
 elements.previous.addEventListener("click", () => shiftDate(1));
 elements.next.addEventListener("click", () => shiftDate(-1));
 [elements.exchange, elements.action, elements.service].forEach((element) =>
