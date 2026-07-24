@@ -56,7 +56,6 @@ class PipelineTests(unittest.TestCase):
     def test_candidate_without_event_makes_run_partial(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings.load(root_dir=tmp)
-            settings.llm_enabled = False
             logger = logging.getLogger("pipeline-test")
             logger.handlers.clear()
             logger.addHandler(logging.NullHandler())
@@ -68,7 +67,14 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(result.stats["audit_record_count"], 2)
             self.assertEqual(set(result.report_paths), {"csv"})
             self.assertTrue(result.report_paths["csv"].exists())
-            audits = pipeline.db.extraction_audits_for_date(date(2026, 1, 2))
+            with pipeline.db.connect() as conn:
+                audits = [
+                    dict(row)
+                    for row in conn.execute(
+                        "SELECT * FROM extraction_audits WHERE external_id=?",
+                        ("empty-extraction",),
+                    ).fetchall()
+                ]
             self.assertEqual({row["extractor"] for row in audits}, {"RULE", "CONSENSUS"})
             rule = next(row for row in audits if row["extractor"] == "RULE")
             self.assertEqual(rule["status"], "EMPTY")
@@ -77,7 +83,6 @@ class PipelineTests(unittest.TestCase):
     def test_prospectus_with_historical_service_text_is_filtered_not_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings = Settings.load(root_dir=tmp)
-            settings.llm_enabled = False
             logger = logging.getLogger("pipeline-filter-test")
             logger.handlers.clear()
             logger.addHandler(logging.NullHandler())

@@ -113,37 +113,6 @@ CREATE TABLE IF NOT EXISTS event_sources (
 );
 """
 
-_EXTRACTION_AUDIT_SELECT = """
-SELECT
-    ea.audit_id,
-    ea.run_id,
-    ea.exchange,
-    ea.external_id,
-    ea.extractor,
-    ea.stage,
-    ea.status,
-    ea.succeeded,
-    ea.raw_response_json,
-    ea.raw_events_json,
-    ea.validated_events_json,
-    ea.rejected_events_json,
-    ea.rejection_reasons_json,
-    ea.warnings_json,
-    ea.created_at,
-    a.announcement_id,
-    a.title,
-    a.published_date,
-    a.canonical_url,
-    a.publisher,
-    a.raw_path,
-    a.text_path,
-    a.parser,
-    a.parse_warnings_json
-FROM extraction_audits ea
-JOIN announcements a
-  ON a.exchange=ea.exchange AND a.external_id=ea.external_id
-"""
-
 _SENSITIVE_AUDIT_KEYS = {
     "api_key",
     "apikey",
@@ -349,53 +318,6 @@ class Database:
     def write_extraction_audit(self, record: ExtractionAuditRecord) -> int:
         return self.insert_extraction_audit(record)
 
-    def extraction_audits_for_date(
-        self,
-        target_date: date,
-        announcement_id: str | int | None = None,
-    ) -> list[dict]:
-        """Return flat audit rows for an announcement date.
-
-        ``announcement_id`` accepts either the exchange's external id or the
-        internal numeric ``announcements.announcement_id``.  JSON columns stay
-        as JSON strings so a CLI can stream large raw model responses without
-        changing their structure.
-        """
-
-        parameters: list[Any] = [target_date.isoformat()]
-        filter_sql = ""
-        if announcement_id is not None:
-            identifier = str(announcement_id)
-            filter_sql = (
-                " AND (a.external_id=? OR CAST(a.announcement_id AS TEXT)=?)"
-            )
-            parameters.extend((identifier, identifier))
-        with self.connect() as conn:
-            rows = conn.execute(
-                _EXTRACTION_AUDIT_SELECT
-                + " WHERE a.published_date=?"
-                + filter_sql
-                + " ORDER BY ea.created_at, ea.audit_id",
-                parameters,
-            ).fetchall()
-            return _audit_rows_with_final_events(conn, rows)
-
-    def extraction_audits_for_announcement(
-        self,
-        exchange: str,
-        external_id: str,
-    ) -> list[dict]:
-        """Return all audit stages for one official announcement id."""
-
-        with self.connect() as conn:
-            rows = conn.execute(
-                _EXTRACTION_AUDIT_SELECT
-                + " WHERE ea.exchange=? AND ea.external_id=?"
-                + " ORDER BY ea.created_at, ea.audit_id",
-                (exchange.strip().upper(), external_id.strip()),
-            ).fetchall()
-            return _audit_rows_with_final_events(conn, rows)
-
     def upsert_event(self, event: MarketMakingEvent) -> int:
         with self.connect() as conn:
             return self._upsert_event(conn, event)
@@ -470,21 +392,6 @@ class Database:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def get_announcement(self, exchange: str, external_id: str) -> dict | None:
-        with self.connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM announcements WHERE exchange=? AND external_id=?",
-                (exchange.upper(), external_id),
-            ).fetchone()
-            return dict(row) if row else None
-
-    def recent_runs(self, limit: int = 20) -> list[dict]:
-        with self.connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM runs ORDER BY run_id DESC LIMIT ?", (limit,)
-            ).fetchall()
-            return [dict(row) for row in rows]
-
     def latest_successful_target_date(self, mode: str = "daily") -> date | None:
         with self.connect() as conn:
             row = conn.execute(
@@ -508,49 +415,6 @@ class Database:
 
 def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
-
-
-def _audit_row(row: sqlite3.Row) -> dict:
-    result = dict(row)
-    result["succeeded"] = bool(result["succeeded"])
-    return result
-
-
-def _audit_rows_with_final_events(
-    conn: sqlite3.Connection,
-    rows: Iterable[sqlite3.Row],
-) -> list[dict]:
-    result = [_audit_row(row) for row in rows]
-    final_by_announcement: dict[tuple[str, str], str] = {}
-    for item in result:
-        identity = (item["exchange"], item["external_id"])
-        if identity in final_by_announcement:
-            continue
-        event_rows = conn.execute(
-            """SELECT
-                e.event_id, e.published_date, e.exchange, e.market_maker,
-                e.security_code, e.security_name, e.effective_date, e.action,
-                e.service_type_raw, e.service_class, e.publisher, e.extractor,
-                e.confidence, e.review_status, e.evidence_json, e.warnings_json,
-                es.source_url
-            FROM event_sources es
-            JOIN events e ON e.event_id=es.event_id
-            WHERE es.exchange=? AND es.external_id=?
-            ORDER BY e.security_code, e.market_maker, e.event_id""",
-            identity,
-        ).fetchall()
-        events: list[dict[str, Any]] = []
-        for event_row in event_rows:
-            event = dict(event_row)
-            event["evidence"] = json.loads(event.pop("evidence_json") or "[]")
-            event["warnings"] = json.loads(event.pop("warnings_json") or "[]")
-            events.append(event)
-        final_by_announcement[identity] = _audit_json_dumps(events)
-    for item in result:
-        item["final_events_json"] = final_by_announcement[
-            (item["exchange"], item["external_id"])
-        ]
-    return result
 
 
 def _audit_json_dumps(value: Any) -> str:

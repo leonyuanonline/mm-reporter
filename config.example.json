@@ -6,12 +6,10 @@
   "log_dir": "logs",
   "db_name": "app.db",
   "llm": {
-    "enabled": true,
     "max_parallel_requests": 4,
     "providers": [
       {
         "name": "model_1",
-        "enabled": true,
         "api_base": "https://api.openai.com/v1",
         "api_key": "",
         "model": "",
@@ -19,7 +17,6 @@
       },
       {
         "name": "model_2",
-        "enabled": true,
         "api_base": "https://your-second-provider.example/v1",
         "api_key": "",
         "model": "",

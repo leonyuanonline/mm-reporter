@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import date
@@ -10,7 +9,7 @@ from typing import Any, Iterable
 from .config import Settings
 from .document_parser import parse_and_store
 from .extraction import extract_events_with_audit, is_candidate
-from .models import AnnouncementCandidate, MarketMakingEvent, ParsedAnnouncement
+from .models import AnnouncementCandidate
 from .reporting import generate_reports
 from .sources import SSESource, SZSESource
 from .storage import Database
@@ -65,7 +64,7 @@ class DailyPipeline:
         incomplete_providers = [
             provider
             for provider in self.settings.llm_providers
-            if self.settings.llm_enabled and provider.enabled and not provider.available
+            if not provider.available
         ]
         if incomplete_providers:
             self.logger.warning(
@@ -75,7 +74,7 @@ class DailyPipeline:
                     for provider in incomplete_providers
                 ),
             )
-        if self.settings.llm_enabled and not self.settings.llm_available:
+        if not self.settings.llm_available:
             self.logger.warning("配置文件中没有可用的大模型接口，本次仅执行规则抽取")
         elif self.settings.llm_available:
             self.logger.info(
@@ -186,72 +185,6 @@ class DailyPipeline:
         )
         return RunResult(target_date, status, stats, report_paths, errors)
 
-    def reprocess(self, exchange: str, external_id: str) -> list[MarketMakingEvent]:
-        row = self.db.get_announcement(exchange, external_id)
-        if row is None:
-            raise KeyError(f"数据库中不存在公告: {exchange}/{external_id}")
-        text_path = Path(row["text_path"])
-        if not text_path.exists():
-            raise FileNotFoundError(f"正文文件不存在: {text_path}")
-        candidate = AnnouncementCandidate(
-            exchange=row["exchange"],
-            external_id=row["external_id"],
-            canonical_url=row["canonical_url"],
-            title=row["title"],
-            published_date=date.fromisoformat(row["published_date"]),
-            publisher=row["publisher"],
-            source_kind=row["source_kind"],
-            detail_url=row["detail_url"],
-            attachment_url=row["attachment_url"],
-            metadata=json.loads(row["metadata_json"] or "{}"),
-        )
-        parsed = ParsedAnnouncement(
-            candidate=candidate,
-            text=text_path.read_text(encoding="utf-8"),
-            raw_path=row["raw_path"],
-            text_path=row["text_path"],
-            raw_sha256=row["raw_sha256"],
-            parser=row["parser"],
-            parse_warnings=json.loads(row["parse_warnings_json"] or "[]"),
-        )
-        run_id = self.db.start_run(candidate.published_date, "reprocess")
-        finished = False
-        try:
-            extraction = extract_events_with_audit(
-                parsed,
-                self.settings,
-                run_id=run_id,
-            )
-            events = extraction.events
-            for audit in extraction.audits:
-                self.db.write_extraction_audit(audit)
-            stats = {
-                "event_count": len(events),
-                "audit_record_count": len(extraction.audits),
-            }
-            if not events:
-                stats["status"] = "PARTIAL"
-                message = f"重新抽取未得到事件，旧事件已保留: {exchange}/{external_id}"
-                self.db.finish_run(run_id, "PARTIAL", stats, message)
-                finished = True
-                raise RuntimeError(message)
-            self.db.replace_source_events(exchange.upper(), external_id, events)
-            stats["status"] = "SUCCESS"
-            self.db.finish_run(run_id, "SUCCESS", stats)
-            finished = True
-            return events
-        except Exception as exc:
-            if not finished:
-                self.db.finish_run(
-                    run_id,
-                    "FAILED",
-                    {"status": "FAILED", "unhandled_exception": type(exc).__name__},
-                    str(exc),
-                )
-            raise
-
-    def export(self, target_date: date) -> dict[str, Path]:
-        return generate_reports(target_date, self.db.events_for_date(target_date), self.settings.report_dir)
 
 def _deduplicate_candidates(
     candidates: Iterable[tuple[Any, AnnouncementCandidate]],

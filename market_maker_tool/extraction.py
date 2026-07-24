@@ -1261,11 +1261,7 @@ class LLMExtractor:
         self.raw_response = None
         self.raw_events = []
         self.rejected_events = []
-        if (
-            self.provider is None
-            or not self.settings.llm_enabled
-            or not self.provider.available
-        ):
+        if self.provider is None or not self.provider.available:
             return []
         if not is_candidate(parsed.candidate, parsed.text):
             return []

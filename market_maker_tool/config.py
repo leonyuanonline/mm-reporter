@@ -15,12 +15,11 @@ class LLMProviderConfig:
     api_base: str
     api_key: str = field(default="", repr=False)
     model: str = ""
-    enabled: bool = True
     timeout_seconds: int = 90
 
     @property
     def available(self) -> bool:
-        return self.enabled and bool(self.api_base and self.api_key and self.model)
+        return bool(self.api_base and self.api_key and self.model)
 
     @property
     def missing_fields(self) -> list[str]:
@@ -43,7 +42,6 @@ class Settings:
     timeout_seconds: int = 30
     requests_per_second: float = 1.0
     lookback_days: int = 3
-    llm_enabled: bool = True
     llm_providers: list[LLMProviderConfig] = field(default_factory=list)
     llm_max_parallel_requests: int = 4
     ocr_command: list[str] = field(default_factory=list)
@@ -76,7 +74,6 @@ class Settings:
             timeout_seconds=int(values.get("timeout_seconds", 30)),
             requests_per_second=float(values.get("requests_per_second", 1.0)),
             lookback_days=int(values.get("lookback_days", 3)),
-            llm_enabled=bool(llm_cfg.get("enabled", True)),
             llm_providers=providers,
             llm_max_parallel_requests=_positive_int(
                 llm_cfg.get("max_parallel_requests", 4),
@@ -98,8 +95,6 @@ class Settings:
 
     @property
     def available_llm_providers(self) -> list[LLMProviderConfig]:
-        if not self.llm_enabled:
-            return []
         return [provider for provider in self.llm_providers if provider.available]
 
 
@@ -116,7 +111,6 @@ def _load_llm_providers(llm_cfg: dict[str, Any]) -> list[LLMProviderConfig]:
         if legacy_fields.intersection(llm_cfg):
             raw_providers = [{
                 "name": "default",
-                "enabled": True,
                 "api_base": llm_cfg.get("api_base", "https://api.openai.com/v1"),
                 "api_key": llm_cfg.get("api_key", ""),
                 "model": llm_cfg.get("model", ""),
@@ -148,7 +142,6 @@ def _load_llm_providers(llm_cfg: dict[str, Any]) -> list[LLMProviderConfig]:
         providers.append(
             LLMProviderConfig(
                 name=name,
-                enabled=bool(raw.get("enabled", True)),
                 api_base=str(raw.get("api_base") or "").strip(),
                 api_key=str(raw.get("api_key") or "").strip(),
                 model=str(raw.get("model") or "").strip(),

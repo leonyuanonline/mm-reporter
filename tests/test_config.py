@@ -20,7 +20,6 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write_config(tmp, {
                 "llm": {
-                    "enabled": True,
                     "max_parallel_requests": 2,
                     "providers": [
                         {
@@ -57,7 +56,6 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write_config(tmp, {
                 "llm": {
-                    "enabled": True,
                     "api_base": "https://legacy.example/v1",
                     "api_key": "legacy-file-key",
                     "model": "legacy-model",
@@ -83,13 +81,12 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "大模型接口名称重复"):
                 Settings.load(root_dir=tmp, config_path=path)
 
-    def test_incomplete_or_disabled_models_are_not_available(self) -> None:
+    def test_incomplete_models_are_not_available(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write_config(tmp, {
                 "llm": {
                     "providers": [
                         {"name": "missing-key", "api_base": "a", "api_key": "", "model": "m"},
-                        {"name": "disabled", "enabled": False, "api_base": "b", "api_key": "k", "model": "m"},
                     ]
                 }
             })
@@ -97,6 +94,27 @@ class ConfigTests(unittest.TestCase):
             self.assertFalse(settings.llm_available)
             self.assertEqual(settings.available_llm_providers, [])
             self.assertEqual(settings.llm_providers[0].missing_fields, ["api_key"])
+
+    def test_legacy_enabled_flags_cannot_disable_models(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_config(tmp, {
+                "llm": {
+                    "enabled": False,
+                    "providers": [{
+                        "name": "model",
+                        "enabled": False,
+                        "api_base": "https://example.test/v1",
+                        "api_key": "key",
+                        "model": "model",
+                    }],
+                }
+            })
+            settings = Settings.load(root_dir=tmp, config_path=path)
+            self.assertTrue(settings.llm_available)
+            self.assertEqual(
+                [provider.name for provider in settings.available_llm_providers],
+                ["model"],
+            )
 
     def test_invalid_provider_name_is_rejected_without_echoing_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
