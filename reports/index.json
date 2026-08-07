@@ -1,6 +1,11 @@
 {
-  "latest": "2026-08-06",
+  "latest": "2026-08-07",
   "reports": [
+    {
+      "date": "2026-08-07",
+      "file": "market_making_report_2026-08-07.csv",
+      "records": 11
+    },
     {
       "date": "2026-08-06",
       "file": "market_making_report_2026-08-06.csv",
